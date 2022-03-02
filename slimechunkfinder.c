@@ -90,23 +90,14 @@ int slime_initialization(void) {
 void slime_map(int x1, int z1, int x2, int z2) {
     swap(&x1, &x2);
     swap(&z1, &z2);
-    int dx = x2 - x1 + 1;
-    int dz = z2 - z1 + 1;
-
-    char* str = (char*)calloc(2 * (size_t)dx * (size_t)dz, sizeof(char));
-    char* write = str;
 
     for (int z = z1; z <= z2; ++z) {
         for (int x = x1; x <= x2; ++x) {
-            *write++ = is_slime_chunk_lut(get_seed(x, z)) ? '#' : ' ';
-            *write++ = ' ';
+            putchar(is_slime_chunk_lut(get_seed(x, z)) ? '#' : ' ');
+            putchar(' ');
         }
-        *(write - 1) = '\n';
+        putchar('\n');
     }
-    *(write - 1) = '\0';
-
-    puts(str);
-    free(str);
 }
 
 void slime_finder(int x1, int z1, int x2, int z2, int n, int thr) {
