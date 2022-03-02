@@ -35,7 +35,8 @@ void slime_finder(int, int, int, int, int, int);
 
 #define WRONG_COMMAND_DOC "Command Parameter Error. Please enter the correct command."
 
-#define HELP_DOC "Type commands for query. Commands list:\n\
+#define HELP_DOC \
+"Type commands for query. Commands list:\n\
 m x1 z1 x2 z2\t\tShow slime chunk map from chunkpos (x1,z1) to (x2,z2).\n\
 f x1 z1 x2 z2 n k\tCheck each n*n chunk from chunkpos (x1,z1) to (x2,z2), output worldpos when slime chunk >= k.\n\
 q\t\t\tQuit. Or you can click close.\n\

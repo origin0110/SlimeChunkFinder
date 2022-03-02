@@ -2,17 +2,13 @@
 
 fast_t lut[LUT_LEN] = {0};
 
-fast_t (*is_slime_chunk)(uint32_t s);
-
-fast_t is_slime_chunk_lut(uint32_t s)
-{
+fast_t is_slime_chunk_lut(uint32_t s) {
     return (lut[s / FAST_BITS] & ((1 << (FAST_BITS - 1)) >> (s % FAST_BITS))) != 0;
 }
 
-fast_t is_slime_chunk_mt(uint32_t s)
-{
+fast_t is_slime_chunk_mt(uint32_t s) {
     uint32_t m = 0x6c078965 * (s ^ s >> 30) + 1;
-    s = s & 0x80000000 | m & 0x7fffffff;
+    s = (s & 0x80000000) | (m & 0x7fffffff);
     for (int i = 2; i < 398; i++)
         m = 0x6c078965 * (m ^ m >> 30) + i;
     m ^= (s >> 1) ^ ((-((int32_t)(s & 1))) & 0x9908b0df);
@@ -23,85 +19,86 @@ fast_t is_slime_chunk_mt(uint32_t s)
     return (fast_t)(!(m % 10));
 }
 
-void generate_lut(void)
-{
+void generate_lut(void) {
 #pragma omp parallel for schedule(static)
-    for (uint32_t i = 0; i < LUT_LEN; i++)
-    {
+    for (uint32_t i = 0; i < LUT_LEN; i++) {
         uint32_t seed = i * FAST_BITS;
+        uint32_t s[FAST_BITS];
+        uint32_t m[FAST_BITS];
+#pragma omp simd
+        for (uint32_t j = 0; j < FAST_BITS; j++) {
+            s[j] = seed | j;
+            m[j] = 0x6c078965 * (s[j] ^ s[j] >> 30) + 1;
+            s[j] = (s[j] & 0x80000000) | (m[j] & 0x7fffffff);
+        }
+        for (int i = 2; i < 398; i++)
+#pragma omp simd
+            for (uint32_t j = 0; j < FAST_BITS; j++)
+                m[j] = 0x6c078965 * (m[j] ^ m[j] >> 30) + i;
+#pragma omp simd
+        for (uint32_t j = 0; j < FAST_BITS; j++) {
+            m[j] ^= (s[j] >> 1) ^ ((-((int32_t)(s[j] & 1))) & 0x9908b0df);
+            m[j] ^= m[j] >> 11;
+            m[j] ^= m[j] << 07 & 0x9d2c5680;
+            m[j] ^= m[j] << 15 & 0xefc60000;
+            m[j] ^= m[j] >> 18;
+            s[j] = (!(m[j] % 10));
+        }
         fast_t tmp = 0;
-        for (uint32_t j = 0; j < FAST_BITS; j++)
-        {
+        for (uint32_t j = 0; j < FAST_BITS; j++) {
             tmp <<= 1;
-            tmp |= is_slime_chunk_mt(seed | j);
+            tmp |= (fast_t)s[j];
         }
         lut[i] = tmp;
     }
 }
 
-uint32_t get_seed(int32_t x, int32_t z)
-{
+uint32_t get_seed(int32_t x, int32_t z) {
     return x * 0x1f1f1f1f ^ z;
 }
 
-void swap(int *a, int *b)
-{
-    if (*a > *b)
-    {
+void swap(int* a, int* b) {
+    if (*a > *b) {
         int tmp = *a;
         *a = *b;
         *b = tmp;
     }
 }
 
-int slime_initialization(void)
-{
-    FILE *fp;
+int slime_initialization(void) {
+    FILE* fp;
     fp = fopen(LUT_NAME, "rb");
-    if (fp != NULL)
-    {
+    if (fp != NULL) {
         fread(lut, FAST_SIZE, LUT_LEN, fp);
         fclose(fp);
-        is_slime_chunk = is_slime_chunk_lut;
         printf("%s has been loaded.\n", LUT_NAME);
         return 0;
     }
-    printf("%s no found. Regenerate? y/n\n", LUT_NAME);
-    if (getchar() != 'y')
-    {
-        is_slime_chunk = is_slime_chunk_mt;
-        printf("Running without %s.\n", LUT_NAME);
-        return 0;
-    }
+    printf("%s no found. Please wait for regenerate.\n", LUT_NAME);
     generate_lut();
     fp = fopen(LUT_NAME, "wb");
-    if (fp == NULL)
-    {
+    if (fp == NULL) {
         printf("ERROR: Can not write %s\n", LUT_NAME);
         return 1;
     }
     fwrite(lut, FAST_SIZE, LUT_LEN, fp);
     fclose(fp);
-    is_slime_chunk = is_slime_chunk_lut;
     printf("%s has been regenerate.\n", LUT_NAME);
     return 0;
 }
 
-void slime_map(int x1, int z1, int x2, int z2)
-{
+void slime_map(int x1, int z1, int x2, int z2) {
     swap(&x1, &x2);
     swap(&z1, &z2);
     int dx = x2 - x1 + 1;
     int dz = z2 - z1 + 1;
 
-    char *str = (char *)calloc(2 * (size_t)dx * (size_t)dz, sizeof(char));
-    char *write = str;
+    char* str = (char*)calloc(2 * (size_t)dx * (size_t)dz, sizeof(char));
+    char* write = str;
 
-    for (int z = z1; z <= z2; ++z)
-    {
-        for (int x = x1; x <= x2; ++x)
-        {
-            *write++ = is_slime_chunk(get_seed(x, z)) ? '#' : ' ';
+    for (int z = z1; z <= z2; ++z) {
+        for (int x = x1; x <= x2; ++x) {
+            *write++ = is_slime_chunk_lut(get_seed(x, z)) ? '#' : ' ';
             *write++ = ' ';
         }
         *(write - 1) = '\n';
@@ -112,15 +109,14 @@ void slime_map(int x1, int z1, int x2, int z2)
     free(str);
 }
 
-void slime_finder(int x1, int z1, int x2, int z2, int n, int thr)
-{
+void slime_finder(int x1, int z1, int x2, int z2, int n, int thr) {
     swap(&x1, &x2);
     swap(&z1, &z2);
     int dx = x2 - x1 + 1;
     int dz = z2 - z1 + 1;
 
-    time_t t0, t1;
-    t0 = clock();
+    double t0, t1;
+    t0 = omp_get_wtime();
 
 #pragma omp parallel
     {
@@ -134,28 +130,27 @@ void slime_finder(int x1, int z1, int x2, int z2, int n, int thr)
 
 #pragma omp barrier
 
-        uint8_t *f1 = (uint8_t *)calloc(dz, 1);
-        uint8_t *f2 = (uint8_t *)calloc(n * dz, 1);
-        for (int x = 0; x < (x_2 - x_1); x++)
-        {
+        uint8_t* f1 = (uint8_t*)calloc(dz, 1);
+        uint8_t* f2 = (uint8_t*)calloc(n * dz, 1);
+#pragma omp simd
+        for (int x = 0; x < (x_2 - x_1); x++) {
             int m = x % n;
             int num = 0;
 
             int xpos = x + x_1;
             uint32_t tmp_get_seed = xpos * 0x1f1f1f1f;
             uint32_t tmp_a = m * dz;
-
+#pragma omp simd
             for (int z = 0; z < n; z++)
                 num += f1[z];
-
-            for (int z = n; z < dz; z++)
-            {
+#pragma omp simd
+            for (int z = n; z < dz; z++) {
                 int zpos = z + z1;
                 uint32_t seed = tmp_get_seed ^ zpos;
 
                 int a = tmp_a + z;
                 f1[z] -= f2[a];
-                f2[a] = is_slime_chunk(seed);
+                f2[a] = is_slime_chunk_lut(seed);
                 f1[z] += f2[a];
 
                 num -= f1[z - n];
@@ -168,9 +163,9 @@ void slime_finder(int x1, int z1, int x2, int z2, int n, int thr)
         free(f1);
         free(f2);
     }
-    t1 = clock();
+    t1 = omp_get_wtime();
 
-    double time = (double)(t1 - t0) / 1000.0;
+    double time = t1 - t0;
     uint64_t speed = ((uint64_t)dx * (uint64_t)dz) / time;
     printf("finish in %.3lfs, %llu chunks/s\n", time, speed);
 }
