@@ -113,6 +113,19 @@ int func_f(int x1, int z1, int x2, int z2, int N, int THR) {
     const int DX = XMAX - XMIN;
     const int DZ = ZMAX - ZMIN;
 
+    int thread_num;
+
+#pragma omp parallel
+    {
+        thread_num = omp_get_num_threads();
+    }
+
+    int z_size = DZ / thread_num;
+
+    if (N >= 128) {
+        printf("N太大了，有溢出风险，别搜\n");
+        return 5;
+    }
     if (N < 1) {
         printf("搜索到一份炒饭\n");
         return 5;
@@ -130,23 +143,21 @@ int func_f(int x1, int z1, int x2, int z2, int N, int THR) {
         return -1;
     }
 
-    if (DX <= 256 || DZ <= 256) {
+    if (DX <= N * 2 || z_size <= N * 2) {
         slime_finder(XMIN, ZMIN, XMAX, ZMAX, N, THR);
-    } else
+    } else {
+        fprintf(stderr, "搜索范围较大，将使用%d线程\n",thread_num);
 #pragma omp parallel
-    {
-        const int thread_num = omp_get_num_threads();
-
-        int z_size = DZ / thread_num;
-
-        int thread_id = omp_get_thread_num();
-        int zmin = ZMIN + thread_id * z_size;
-        int zmax;
-        if (thread_id != thread_num - 1)
-            zmax = ZMIN + (thread_id + 1) * z_size + N - 1;
-        else
-            zmax = ZMAX;
-        slime_finder(XMIN, zmin, XMAX, zmax, N, THR);
+        {
+            int thread_id = omp_get_thread_num();
+            int zmin = ZMIN + thread_id * z_size;
+            int zmax;
+            if (thread_id != thread_num - 1)
+                zmax = ZMIN + (thread_id + 1) * z_size + N - 1;
+            else
+                zmax = ZMAX;
+            slime_finder(XMIN, zmin, XMAX, zmax, N, THR);
+        }
     }
 
     double time1 = omp_get_wtime();
