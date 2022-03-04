@@ -125,7 +125,7 @@ int func_f(int x1, int z1, int x2, int z2, int N, int THR) {
         printf("搜索到一个笨比\n");
         return 1;
     }
-    if (DX * DZ < THR) {
+    if (N * N < THR) {
         printf("搜索到一颗桃子\n");
         return -1;
     }
