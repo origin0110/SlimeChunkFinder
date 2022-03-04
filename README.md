@@ -1,4 +1,3 @@
 # SlimeChunkFinder
-The fastest slime chunk finder in MCBE for now.  
-10+ billion chunks per second on 5950X.  
-search all possible position in 2 min.
+目前最快的mcbe多联史莱姆区块查找器
+使用AVX2指令集与多线程加速搜索
