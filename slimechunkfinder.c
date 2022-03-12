@@ -14,25 +14,25 @@ static uint8_t lut[LUT_SIZE];
 
 void generate_lut(void) {
 #pragma omp parallel for
-    for (uint32_t i = 0; i < LUT_SIZE; i++) {
-        uint32_t seed_0 = i * 8;
-        uint32_t s[8];
-        uint32_t m[8];
+    for (uint32_t i = 0; i < LUT_SIZE / 8; i++) {
+        uint32_t seed_0 = i * 64;
+        uint32_t s[64];
+        uint32_t m[64];
 
 #pragma omp simd
-        for (uint32_t j = 0; j < 8; j++) {
+        for (uint32_t j = 0; j < 64; j++) {
             s[j] = seed_0 | j;
             m[j] = 0x6c078965 * (s[j] ^ s[j] >> 30) + 1;
             s[j] = (s[j] & 0x80000000) | (m[j] & 0x7fffffff);
         }
 
-        for (int i = 2; i < 398; i++)
+        for (int k = 2; k < 398; k++)
 #pragma omp simd
-            for (uint32_t j = 0; j < 8; j++)
-                m[j] = 0x6c078965 * (m[j] ^ m[j] >> 30) + i;
+            for (uint32_t j = 0; j < 64; j++)
+                m[j] = 0x6c078965 * (m[j] ^ m[j] >> 30) + k;
 
 #pragma omp simd
-        for (uint32_t j = 0; j < 8; j++) {
+        for (uint32_t j = 0; j < 64; j++) {
             m[j] ^= (s[j] >> 1) ^ ((-((int32_t)(s[j] & 1))) & 0x9908b0df);
             m[j] ^= m[j] >> 11;
             m[j] ^= m[j] << 07 & 0x9d2c5680;
@@ -41,13 +41,15 @@ void generate_lut(void) {
             s[j] = (!(m[j] % 10));
         }
 
-        uint8_t tmp = 0;
-        for (uint32_t j = 0; j < 8; j++) {
-            tmp <<= 1;
-            tmp |= (uint8_t)s[j];
+        size_t index = i * 8;
+        for (uint32_t k = 0; k < 8; k++) {
+            uint8_t tmp = 0;
+            for (uint32_t j = 0; j < 8; j++) {
+                tmp <<= 1;
+                tmp |= (uint8_t)s[k * 8 + j];
+            }
+            lut[index + k] = tmp;
         }
-
-        lut[i] = tmp;
     }
 }
 
@@ -76,16 +78,17 @@ void slime_finder(int XMIN, int ZMIN, int XMAX, int ZMAX, int N, int THR) {
             f2[f2_base_index + zi] = lut[tmp_u32[zi]];
 
 #pragma omp simd
-        for (size_t zi = 0; zi < DZ; zi++) {
+        for (size_t zi = 0; zi < N; zi++) {
             f2[f2_base_index + zi] = (f2[f2_base_index + zi] & tmp_i8[zi]) != 0;
             f1[zi] += f2[f2_base_index + zi];
-        }
-
-        for (size_t zi = 0; zi < N; zi++)
             tmp_i8[zi] = f1[zi];
+        }
 #pragma omp simd
-        for (size_t zi = N; zi < DZ; zi++)
+        for (size_t zi = N; zi < DZ; zi++) {
+            f2[f2_base_index + zi] = (f2[f2_base_index + zi] & tmp_i8[zi]) != 0;
+            f1[zi] += f2[f2_base_index + zi];
             tmp_i8[zi] = f1[zi] - f1[zi - N];
+        }
 
         int32_t count = 0;
         for (size_t zi = 0; zi < DZ; zi++) {
@@ -146,7 +149,7 @@ int func_f(int x1, int z1, int x2, int z2, int N, int THR) {
     if (DX <= N * 2 || z_size <= N * 2) {
         slime_finder(XMIN, ZMIN, XMAX, ZMAX, N, THR);
     } else {
-        fprintf(stderr, "搜索范围较大，将使用%d线程\n",thread_num);
+        fprintf(stderr, "搜索范围较大，将使用%d线程\n", thread_num);
 #pragma omp parallel
         {
             int thread_id = omp_get_thread_num();
@@ -170,12 +173,14 @@ int func_f(int x1, int z1, int x2, int z2, int N, int THR) {
 void slime_initialization(void) {
     FILE* fp = fopen(LUT_NAME, "rb");
     if (fp == NULL) {
+        double time0 = omp_get_wtime();
         fprintf(stderr, "找不到重要文件%s，正在尝试重新生成，请耐心等待约一分钟\n", LUT_NAME);
         generate_lut();
         fp = fopen(LUT_NAME, "wb");
         fwrite(lut, 1, LUT_SIZE, fp);
         fclose(fp);
-        fprintf(stderr, "文件%s已经重新生成，初始化成功\n", LUT_NAME);
+        double time1 = omp_get_wtime();
+        fprintf(stderr, "文件%s已经重新生成，初始化成功，用时%lfs\n", LUT_NAME, time1 - time0);
     } else {
         fread(lut, 1, LUT_SIZE, fp);
         fclose(fp);
